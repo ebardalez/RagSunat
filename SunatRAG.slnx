@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SunatRAG.Core/SunatRAG.Core.csproj" />
+  <Project Path="SunatRAG.Ingestion/SunatRAG.Ingestion.csproj" />
+  <Project Path="SunatRAG.Tests/SunatRAG.Tests.csproj" />
+  <Project Path="SunatRAG.Web/SunatRAG.Web.csproj" />
+</Solution>
