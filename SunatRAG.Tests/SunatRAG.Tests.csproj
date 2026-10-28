@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SunatRAG.Core\SunatRAG.Core.csproj" />
+    <ProjectReference Include="..\SunatRAG.Ingestion\SunatRAG.Ingestion.csproj" />
   </ItemGroup>
 
 </Project>

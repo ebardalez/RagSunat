@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 
 # Session handoff notes (local)
 HANDOFF.md
+
+# Scraped corpus (PDFs, manifest, cached index pages)
+data/

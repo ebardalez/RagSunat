@@ -1,14 +1,12 @@
-using System.Diagnostics;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using OpenTelemetry.Trace;
 using SunatRAG.Core.Composition;
-using SunatRAG.Core.Configuration;
+using SunatRAG.Ingestion.Commands;
+using SunatRAG.Ingestion.Scraping;
 
 // ContentRoot = output folder so appsettings*.json are found no matter where `dotnet run` is invoked from.
+// (Relative paths such as Scraping:DataDirectory still resolve against the CURRENT directory: run from the repo root.)
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
     Args = args,
@@ -16,38 +14,39 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     EnvironmentName = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? Environments.Development
 });
 builder.Services.AddSunatAi(builder.Configuration);
+builder.Services.AddSunatScraping(builder.Configuration);
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddSource(AiServiceCollectionExtensions.TelemetrySourceName).AddConsoleExporter());
 
 using var host = builder.Build();
-var sp = host.Services;
-using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-var ct = cts.Token;
 
-if ((args.FirstOrDefault() ?? "smoke") != "smoke")
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
 {
-    Console.Error.WriteLine("Usage: dotnet run --project SunatRAG.Ingestion -- smoke");
-    return 1;
+    e.Cancel = true; // finish the current download cleanly; the manifest keeps what is done
+    cts.Cancel();
+};
+
+var command = args.FirstOrDefault() ?? "smoke";
+try
+{
+    return command switch
+    {
+        "smoke" => await SmokeCommand.RunAsync(host.Services, cts.Token),
+        "scrape" => await ScrapeCommand.RunAsync(host.Services, args[1..], cts.Token),
+        _ => PrintUsage()
+    };
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Cancelado por el usuario.");
+    return 130;
 }
 
-// 1) Health
-var report = await sp.GetRequiredService<HealthCheckService>().CheckHealthAsync(ct);
-foreach (var (name, e) in report.Entries) Console.WriteLine($"[health] {name}: {e.Status} - {e.Description}");
-if (report.Status != HealthStatus.Healthy) return 2;
-
-// 2) One chat call
-var chat = sp.GetRequiredService<IChatClient>();
-var sw = Stopwatch.StartNew();
-var response = await chat.GetResponseAsync(
-    "Responde en una sola frase: ¿qué es la SUNAT?", cancellationToken: ct);
-Console.WriteLine($"[chat] {sw.Elapsed.TotalSeconds:F1}s  in={response.Usage?.InputTokenCount} out={response.Usage?.OutputTokenCount}");
-Console.WriteLine(response.Text);
-
-// 3) One embedding call
-var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-sw.Restart();
-var vector = await embedder.GenerateVectorAsync(
-    "Resolución de Superintendencia que aprueba el formulario virtual", cancellationToken: ct);
-var expected = sp.GetRequiredService<IOptions<AiOptions>>().Value.Ollama.EmbeddingDimensions;
-Console.WriteLine($"[embed] {sw.Elapsed.TotalMilliseconds:F0} ms  length={vector.Length} (expected {expected})");
-return vector.Length == expected ? 0 : 3;
+static int PrintUsage()
+{
+    Console.Error.WriteLine("Comandos:");
+    Console.Error.WriteLine("  smoke    prueba de conectividad con Ollama (Fase 0)");
+    Console.Error.WriteLine($"  {ScrapeCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
+    return 1;
+}
