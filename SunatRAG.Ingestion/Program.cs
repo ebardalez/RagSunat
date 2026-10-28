@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using OpenTelemetry.Trace;
 using SunatRAG.Core.Composition;
 using SunatRAG.Ingestion.Commands;
+using SunatRAG.Ingestion.Extraction;
 using SunatRAG.Ingestion.Scraping;
 
 // ContentRoot = output folder so appsettings*.json are found no matter where `dotnet run` is invoked from.
@@ -15,6 +16,7 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 });
 builder.Services.AddSunatAi(builder.Configuration);
 builder.Services.AddSunatScraping(builder.Configuration);
+builder.Services.AddSunatExtraction(builder.Configuration);
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddSource(AiServiceCollectionExtensions.TelemetrySourceName).AddConsoleExporter());
 
@@ -34,6 +36,8 @@ try
     {
         "smoke" => await SmokeCommand.RunAsync(host.Services, cts.Token),
         "scrape" => await ScrapeCommand.RunAsync(host.Services, args[1..], cts.Token),
+        "inspect" => await InspectCommand.RunAsync(host.Services, args[1..], cts.Token),
+        "extract" => await ExtractCommand.RunAsync(host.Services, args[1..], cts.Token),
         _ => PrintUsage()
     };
 }
