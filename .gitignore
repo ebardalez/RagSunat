@@ -480,3 +480,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local config (LAN endpoints, secrets)
+**/appsettings.Development.json
+
+# Session handoff notes (local)
+HANDOFF.md
