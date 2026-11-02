@@ -168,7 +168,8 @@ public sealed partial class Fts5KeywordIndex(IOptions<IndexOptions> options)
         {
             var t = m.Value.ToLowerInvariant();
             var isNumber = t.All(char.IsDigit);
-            if (!isNumber && (t.Length < 2 || Stopwords.Contains(t))) continue;
+            // Fold before the stopword test: users type "cuál"/"qué"/"está" with accents, the list is stored without them.
+            if (!isNumber && (t.Length < 2 || Stopwords.Contains(CategoriaClassifier.Fold(t)))) continue;
             if (!tokens.Contains(t)) tokens.Add(t);
             if (tokens.Count == 32) break;
         }
