@@ -32,6 +32,19 @@ public sealed class SunatChatSession(SunatAgentFactory factory) : IDisposable
 
     public async IAsyncEnumerable<ChatEvent> AskAsync(string question, [EnumeratorCancellation] CancellationToken ct = default)
     {
+        var answer = new System.Text.StringBuilder();
+        await foreach (var ev in StreamAsync(question, ct))
+        {
+            if (ev is TextDelta d) answer.Append(d.Text);
+            yield return ev;
+        }
+
+        // Reached only when the stream completed (a cancelled run throws before this line): auditing half an answer would mislead.
+        yield return new AuditReported(AnswerAuditor.Audit(question, answer.ToString(), Citations));
+    }
+
+    private async IAsyncEnumerable<ChatEvent> StreamAsync(string question, [EnumeratorCancellation] CancellationToken ct)
+    {
         _session ??= await _bundle.Agent.CreateSessionAsync(ct);
 
         await foreach (var update in _bundle.Agent.RunStreamingAsync(question, _session, cancellationToken: ct))

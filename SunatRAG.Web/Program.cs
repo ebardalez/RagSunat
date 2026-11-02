@@ -16,6 +16,7 @@ builder.Services.AddSunatAgent(builder.Configuration);
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t
         .AddSource(AiServiceCollectionExtensions.TelemetrySourceName)
+        .AddSource(SunatRAG.Core.Diagnostics.SunatTelemetry.RetrievalSourceName)
         .AddConsoleExporter());
 
 var app = builder.Build();

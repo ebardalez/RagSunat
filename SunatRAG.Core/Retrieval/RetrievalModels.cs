@@ -66,6 +66,7 @@ public sealed record RetrievalDiagnostics(
     int SkippedForDocumentCap,
     int SkippedForBudget,
     bool RerankApplied,
-    bool RerankFellBack);
+    bool RerankFellBack,
+    bool Refused = false);
 
 public sealed record RetrievalResult(string Query, IReadOnlyList<RetrievedChunk> Chunks, RetrievalDiagnostics Diagnostics);

@@ -59,6 +59,13 @@
             }
         }
 
+        @if (turn.Audit is { Grounding.UngroundedNumbers.Count: > 0 } audit)
+        {
+            <div class="small text-danger mt-1">
+                Cifras de la respuesta que no aparecen en ninguna fuente recuperada: @string.Join(", ", audit.Grounding.UngroundedNumbers). Verifícalas antes de usarlas.
+            </div>
+        }
+
         @if (turn.ModelCalls > 0)
         {
             <div class="small text-muted mt-1">
@@ -92,6 +99,7 @@
         public long LastPromptTokens { get; set; }
         public long OutputTokens { get; set; }
         public CitationResolution? Sources { get; set; }
+        public AnswerAudit? Audit { get; set; }
         public bool Stopped { get; set; }
         public string? Error { get; set; }
     }
@@ -124,6 +132,9 @@
                         break;
                     case ToolCalled t:
                         turn.Tools.Add(t.Arguments is null ? t.Name : $"{t.Name} {t.Arguments}");
+                        break;
+                    case AuditReported a:
+                        turn.Audit = a.Audit;
                         break;
                     case UsageReported u:
                         turn.ModelCalls++;

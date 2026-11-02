@@ -23,7 +23,7 @@ public sealed class AgentOptions
 {
     public const string SectionName = "Agent";
 
-    public RetrievalStrategy Retrieval { get; init; } = RetrievalStrategy.Tool;
+    public RetrievalStrategy Retrieval { get; init; } = RetrievalStrategy.ContextProvider; // measured in Phase 6: 93% vs 50% on the golden set
 
     /// <summary>Folder that contains one sub-folder per skill (<c>sunat-normas/SKILL.md</c>). Relative paths resolve against AppContext.BaseDirectory.</summary>
     public string SkillsPath { get; init; } = "skills";

@@ -51,7 +51,7 @@ public class SunatAgentTests
         var model = new ScriptedChatClient(
             CallSearch("cronograma declaración jurada anual impuesto a la renta", "resolucion"),
             [new TextContent("Se presenta hasta el 31 de marzo [1].")]);
-        using var session = CreateSession(model, new AgentOptions { EnableSkills = false });
+        using var session = CreateSession(model, new AgentOptions { Retrieval = RetrievalStrategy.Tool, EnableSkills = false });
 
         var events = await RunAsync(session, "¿hasta cuándo declaro lo del año pasado?");
 
@@ -81,7 +81,7 @@ public class SunatAgentTests
     public async Task ToolStrategy_ExposesTheSearchToolAndGroundingRules()
     {
         var model = new ScriptedChatClient([new TextContent("Hola.")]);
-        using var session = CreateSession(model, new AgentOptions { EnableSkills = false });
+        using var session = CreateSession(model, new AgentOptions { Retrieval = RetrievalStrategy.Tool, EnableSkills = false });
 
         await RunAsync(session, "hola");
 

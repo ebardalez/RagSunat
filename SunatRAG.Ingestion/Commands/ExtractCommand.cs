@@ -9,13 +9,14 @@ namespace SunatRAG.Ingestion.Commands;
 public static class ExtractCommand
 {
     public const string Usage =
-        "Uso: dotnet run --project SunatRAG.Ingestion -- extract [--include-admin] [--approx-tokens] [--only <id>] [--limit N] [--target N] [--overlap N]";
+        "Uso: dotnet run --project SunatRAG.Ingestion -- extract [--include-admin] [--approx-tokens] [--incremental] [--only <id>] [--limit N] [--target N] [--overlap N]";
 
     public static async Task<int> RunAsync(IServiceProvider sp, string[] args, CancellationToken ct)
     {
         var options = sp.GetRequiredService<IOptions<ChunkingOptions>>().Value;
         var includeAdmin = false;
         var approx = false;
+        var incremental = false;
         string? only = null;
         int? limit = null;
 
@@ -25,6 +26,7 @@ public static class ExtractCommand
             {
                 case "--include-admin": includeAdmin = true; break;
                 case "--approx-tokens": approx = true; break;
+                case "--incremental": incremental = true; break;
                 case "--only" when i + 1 < args.Length: only = args[++i]; break;
                 case "--limit" when i + 1 < args.Length && int.TryParse(args[i + 1], out var l): limit = l; i++; break;
                 case "--target" when i + 1 < args.Length && int.TryParse(args[i + 1], out var t): options = options with { TargetTokens = t }; i++; break;
@@ -54,7 +56,9 @@ public static class ExtractCommand
         var runner = sp.GetRequiredService<ChunkingRunner>();
         var chunker = new TokenAwareChunker(counter, options);
         var started = DateTime.UtcNow;
-        var summary = await runner.RunAsync(chunker, new ChunkingRequest(includeAdmin, limit, only), ct);
+        // Anything that changes the chunks without changing the PDF must be part of the fingerprint.
+        var fingerprint = $"{counter.GetType().Name}|{options.TargetTokens}|{options.OverlapTokens}|{includeAdmin}";
+        var summary = await runner.RunAsync(chunker, new ChunkingRequest(includeAdmin, limit, only, incremental, fingerprint), ct);
         var elapsed = DateTime.UtcNow - started;
 
         if (only is not null) PrintChunks(summary);
@@ -79,6 +83,9 @@ public static class ExtractCommand
         Console.WriteLine("── Resumen ──────────────────────────────");
         Console.WriteLine($"Documentos en el manifest procesados: {s.Reports.Count} ({elapsed.TotalSeconds:0.0} s)");
         foreach (var g in byStatus) Console.WriteLine($"  {g.Key,-24} {g.Count()}");
+        if (s.Incremental is { } inc)
+            Console.WriteLine($"Incremental: reutilizados {inc.Reused} | nuevos {inc.New} | cambiados {inc.Reprocessed} | retirados {inc.Removed}" +
+                              (inc.Removed > 0 ? "  → ejecuta `index --prune` para limpiar el índice." : ""));
 
         var admin = s.Reports.Where(r => r.Status == "SkippedAdministrativa")
             .GroupBy(r => r.CategoriaRule).OrderByDescending(g => g.Count());

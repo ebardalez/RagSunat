@@ -24,7 +24,12 @@ public static class RetrievalServiceCollectionExtensions
 
         services.AddSingleton<LlmReranker>();
         services.AddSingleton<HybridRetriever>();
-        services.AddSingleton<IChunkRetriever>(sp => sp.GetRequiredService<HybridRetriever>());
+        // The agent sees IChunkRetriever = guard(HybridRetriever). Eval and the retrieve CLI resolve HybridRetriever directly (unguarded).
+        services.AddOptions<GuardOptions>()
+            .Bind(config.GetSection(GuardOptions.SectionName))
+            .Validate(o => o.MaxBestDistance is > 0 and <= 2, "Guard:MaxBestDistance debe estar entre 0 y 2 (distancia coseno).")
+            .ValidateOnStart();
+        services.AddSingleton<IChunkRetriever>(sp => ActivatorUtilities.CreateInstance<GuardedRetriever>(sp, sp.GetRequiredService<HybridRetriever>()));
         return services;
     }
 }

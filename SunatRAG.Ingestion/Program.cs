@@ -30,6 +30,7 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(t =>
     {
         t.AddSource(AiServiceCollectionExtensions.TelemetrySourceName);
+        t.AddSource(SunatRAG.Core.Diagnostics.SunatTelemetry.RetrievalSourceName);
         if (traceToConsole) t.AddConsoleExporter();
     });
 
@@ -53,6 +54,7 @@ try
         "index" => await IndexCommand.RunAsync(host.Services, args[1..], cts.Token),
         "retrieve" => await RetrieveCommand.RunAsync(host.Services, args[1..], cts.Token),
         "ask" => await AskCommand.RunAsync(host.Services, args[1..], cts.Token),
+        "eval" => await EvalCommand.RunAsync(host.Services, args[1..], cts.Token),
         _ => PrintUsage()
     };
 }
@@ -82,5 +84,6 @@ static int PrintUsage()
     Console.Error.WriteLine($"  {IndexCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     Console.Error.WriteLine($"  {RetrieveCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     Console.Error.WriteLine($"  {AskCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
+    Console.Error.WriteLine($"  {EvalCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     return 1;
 }

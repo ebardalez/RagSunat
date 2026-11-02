@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using SunatRAG.Core.Evaluation;
 using SunatRAG.Core.Retrieval;
 
 namespace SunatRAG.Core.Agents;
@@ -77,6 +78,16 @@ public sealed partial class CitationRegistry
         }
 
         return new CitationResolution(valid, invalid);
+    }
+
+    /// <summary>
+    /// Everything shown to the model so far, numbered: the evidence the groundedness check compares an answer against.
+    /// The text includes the citation line (title, resolution number, pages) because the tool result shows it to the model too:
+    /// an answer that says "Resolución 000386-2025" is quoting what it was given, not inventing a number.
+    /// </summary>
+    public IReadOnlyList<GroundingSource> Snapshot()
+    {
+        lock (_gate) return _chunks.Select((c, i) => new GroundingSource(i + 1, c.Record.Cita() + "\n" + c.Record.Text)).ToList();
     }
 
     public void Clear()

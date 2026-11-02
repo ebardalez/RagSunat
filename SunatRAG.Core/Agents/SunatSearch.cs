@@ -82,7 +82,10 @@ public sealed class SunatSearch(
         string consulta, IReadOnlyList<(int Number, RetrievedChunk Chunk)> numbered, RetrievalDiagnostics diagnostics, bool weak)
     {
         if (numbered.Count == 0)
-            return "No se encontraron fragmentos en el índice para esta consulta. NO respondas con conocimiento propio: " +
+            return (diagnostics.Refused
+                       ? "Los fragmentos más cercanos del índice no son relevantes para esta consulta (coincidencia demasiado débil). "
+                       : "No se encontraron fragmentos en el índice para esta consulta. ") +
+                   "NO respondas con conocimiento propio: " +
                    "dile al usuario que el índice no contiene información sobre esto. Puedes reintentar UNA vez con otras palabras.";
 
         var header = weak

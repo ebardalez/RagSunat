@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.VectorData;
 using SunatRAG.Core.Configuration;
+using SunatRAG.Core.Diagnostics;
 using SunatRAG.Core.Indexing;
 
 namespace SunatRAG.Core.Retrieval;
@@ -37,6 +38,8 @@ public sealed class HybridRetriever(
 
     public async Task<RetrievalResult> RetrieveAsync(RetrievalRequest request, CancellationToken ct = default)
     {
+        // Null when nobody listens (OTel not configured, no LatencyTracer): every activity?.SetTag below is then a no-op.
+        using var activity = SunatTelemetry.Retrieval.StartActivity("sunat.retrieve");
         var o = retrievalOptions.Value;
         var query = request.Query.Trim();
         if (query.Length == 0) throw new ArgumentException("La consulta está vacía.", nameof(request));
@@ -109,6 +112,10 @@ public sealed class HybridRetriever(
             "Retrieval {Mode}: {Vec} vectoriales + {Kw} BM25 -> {Fused} fusionados -> {Selected} en contexto ({Used}/{Budget} tokens).",
             request.Mode, vector.Hits.Count, keyword.Hits.Count, fused.Count, selection.Selected.Count, selection.UsedTokens, budget);
 
+        activity?.SetTag("sunat.retrieval.mode", request.Mode.ToString());
+        activity?.SetTag("sunat.retrieval.selected", selection.Selected.Count);
+        activity?.SetTag("sunat.retrieval.used_tokens", selection.UsedTokens);
+        activity?.SetTag("sunat.retrieval.best_distance", diagnostics.BestVectorDistance);
         return new RetrievalResult(query, selection.Selected, diagnostics);
     }
 
