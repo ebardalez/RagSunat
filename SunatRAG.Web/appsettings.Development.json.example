@@ -15,5 +15,8 @@
       "RequestTimeout": "00:10:00",
       "ContextLength": 16384
     }
+  },
+  "Index": {
+    "DatabasePath": "C:\\path\\to\\RagSunat\\data\\sunat.db"
   }
 }

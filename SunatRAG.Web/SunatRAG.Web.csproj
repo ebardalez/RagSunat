@@ -9,6 +9,11 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
   </ItemGroup>
 
+  <!-- Agent Skills live at <repo>/skills and are copied next to the binaries; Agent:SkillsPath ("skills") resolves against AppContext.BaseDirectory. -->
+  <ItemGroup>
+    <Content Include="..\skills\**\*" Link="skills\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

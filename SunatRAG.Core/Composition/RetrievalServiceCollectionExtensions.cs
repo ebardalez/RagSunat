@@ -24,6 +24,7 @@ public static class RetrievalServiceCollectionExtensions
 
         services.AddSingleton<LlmReranker>();
         services.AddSingleton<HybridRetriever>();
+        services.AddSingleton<IChunkRetriever>(sp => sp.GetRequiredService<HybridRetriever>());
         return services;
     }
 }

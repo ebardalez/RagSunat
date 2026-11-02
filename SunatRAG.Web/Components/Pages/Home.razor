@@ -1,7 +1,162 @@
-﻿@page "/"
+@page "/"
+@using System.Text
+@using SunatRAG.Core.Agents
+@inject SunatChatSession Chat
 
-<PageTitle>Home</PageTitle>
+<PageTitle>SunatRAG</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1 class="h4">Consultas sobre normativa SUNAT</h1>
+<p class="text-muted small">
+    Responde solo con normas e informes de 2025 indexados y cita la fuente. Información de carácter educativo;
+    no constituye asesoría legal ni tributaria. Verifica la vigencia en sunat.gob.pe o El Peruano.
+</p>
 
-Welcome to your new app.
+@foreach (var turn in _turns)
+{
+    <div class="mb-4">
+        <div class="fw-semibold">@turn.Question</div>
+
+        @foreach (var tool in turn.Tools)
+        {
+            <div class="small text-muted font-monospace">🔧 @tool</div>
+        }
+
+        <div class="mt-1" style="white-space: pre-wrap">@turn.Answer</div>
+
+        @if (turn.Stopped)
+        {
+            <div class="small text-warning">(detenido)</div>
+        }
+        @if (turn.Error is not null)
+        {
+            <div class="small text-danger">Error: @turn.Error</div>
+        }
+
+        @if (turn.Sources is { } sources)
+        {
+            @if (sources.Valid.Count > 0)
+            {
+                <div class="small mt-2">
+                    <div class="fw-semibold">Fuentes</div>
+                    @foreach (var c in sources.Valid)
+                    {
+                        <div>
+                            [@c.Number] <a href="@c.PageUrl" target="_blank" rel="noopener">@c.Cita</a>
+                            <div class="text-muted">@c.Snippet</div>
+                        </div>
+                    }
+                </div>
+            }
+            @if (sources.Invalid.Count > 0)
+            {
+                <div class="small text-danger mt-1">
+                    La respuesta cita fuentes que no existen: @string.Join(", ", sources.Invalid.Select(n => $"[{n}]")). No la tomes como fundamentada.
+                </div>
+            }
+            @if (sources.Valid.Count == 0 && sources.Invalid.Count == 0 && turn.Answer.Length > 0 && turn.Error is null)
+            {
+                <div class="small text-warning mt-1">Esta respuesta no cita ninguna fuente.</div>
+            }
+        }
+
+        @if (turn.ModelCalls > 0)
+        {
+            <div class="small text-muted mt-1">
+                @turn.ModelCalls llamada(s) al modelo · último prompt: @turn.LastPromptTokens tokens · salida total: @turn.OutputTokens tokens
+            </div>
+        }
+    </div>
+}
+
+<form @onsubmit="SendAsync" class="d-flex gap-2">
+    <input class="form-control" @bind="_input" @bind:event="oninput" disabled="@Busy"
+           placeholder="Pregunta sobre una resolución o informe de la SUNAT…" />
+    @if (Busy)
+    {
+        <button type="button" class="btn btn-outline-danger" @onclick="Stop">Detener</button>
+    }
+    else
+    {
+        <button type="submit" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(_input)">Enviar</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="NewConversation">Nueva</button>
+    }
+</form>
+
+@code {
+    private sealed class Turn(string question)
+    {
+        public string Question { get; } = question;
+        public StringBuilder Answer { get; } = new();
+        public List<string> Tools { get; } = [];
+        public int ModelCalls { get; set; }
+        public long LastPromptTokens { get; set; }
+        public long OutputTokens { get; set; }
+        public CitationResolution? Sources { get; set; }
+        public bool Stopped { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private readonly List<Turn> _turns = [];
+    private string _input = "";
+    private CancellationTokenSource? _cts;
+
+    private bool Busy => _cts is not null;
+
+    private async Task SendAsync()
+    {
+        var question = _input.Trim();
+        if (question.Length == 0 || Busy) return;
+
+        _input = "";
+        var turn = new Turn(question);
+        _turns.Add(turn);
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            await foreach (var ev in Chat.AskAsync(question, ct))
+            {
+                switch (ev)
+                {
+                    case TextDelta d:
+                        turn.Answer.Append(d.Text);
+                        break;
+                    case ToolCalled t:
+                        turn.Tools.Add(t.Arguments is null ? t.Name : $"{t.Name} {t.Arguments}");
+                        break;
+                    case UsageReported u:
+                        turn.ModelCalls++;
+                        turn.LastPromptTokens = u.InputTokens ?? turn.LastPromptTokens;
+                        turn.OutputTokens += u.OutputTokens ?? 0;
+                        break;
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            turn.Stopped = true;
+        }
+        catch (Exception ex)
+        {
+            turn.Error = ex.Message;
+        }
+        finally
+        {
+            // Citations are resolved by the app from the numbers in the text, never trusted from the model.
+            turn.Sources = Chat.Citations.Resolve(turn.Answer.ToString());
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private void Stop() => _cts?.Cancel();
+
+    private void NewConversation()
+    {
+        Chat.Reset();
+        _turns.Clear();
+    }
+}

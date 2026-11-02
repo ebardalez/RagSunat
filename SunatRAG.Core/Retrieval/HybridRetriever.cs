@@ -26,7 +26,7 @@ public sealed class HybridRetriever(
     IOptions<RetrievalOptions> retrievalOptions,
     IOptions<AiOptions> aiOptions,
     ILogger<HybridRetriever> logger,
-    LlmReranker? reranker = null)
+    LlmReranker? reranker = null) : IChunkRetriever
 {
     private sealed record Hit(ChunkRecord Record, double? Distance, double? Bm25);
 

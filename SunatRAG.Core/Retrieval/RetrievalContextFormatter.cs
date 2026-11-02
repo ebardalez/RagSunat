@@ -13,16 +13,24 @@ namespace SunatRAG.Core.Retrieval;
 /// </summary>
 public static class RetrievalContextFormatter
 {
-    public static string Format(IReadOnlyList<RetrievedChunk> chunks)
+    /// <summary>Numbers chunks 1..n by position (single-shot retrieval, e.g. the CLI).</summary>
+    public static string Format(IReadOnlyList<RetrievedChunk> chunks) =>
+        Format(chunks.Select((c, i) => (i + 1, c)));
+
+    /// <summary>
+    /// Uses caller-assigned numbers. The agent needs this: several searches can happen in one conversation, and "[1]" must keep meaning
+    /// the same chunk in every tool result and every answer (see CitationRegistry).
+    /// </summary>
+    public static string Format(IEnumerable<(int Number, RetrievedChunk Chunk)> numbered)
     {
         var sb = new StringBuilder();
-        for (var i = 0; i < chunks.Count; i++)
+        foreach (var (number, chunk) in numbered)
         {
-            sb.Append('[').Append(i + 1).Append("] ").AppendLine(chunks[i].Cita);
-            sb.AppendLine(chunks[i].Record.Text.Trim());
-            if (i < chunks.Count - 1) sb.AppendLine();
+            if (sb.Length > 0) sb.AppendLine();
+            sb.Append('[').Append(number).Append("] ").AppendLine(chunk.Cita);
+            sb.AppendLine(chunk.Record.Text.Trim());
         }
 
-        return sb.ToString();
+        return sb.ToString().TrimEnd();
     }
 }

@@ -10,6 +10,9 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddSunatAi(builder.Configuration);
+builder.Services.AddSunatIndex(builder.Configuration);
+builder.Services.AddSunatRetrieval(builder.Configuration);
+builder.Services.AddSunatAgent(builder.Configuration);
 builder.Services.AddOpenTelemetry()
     .WithTracing(t => t
         .AddSource(AiServiceCollectionExtensions.TelemetrySourceName)

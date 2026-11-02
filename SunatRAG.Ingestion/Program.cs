@@ -21,6 +21,7 @@ builder.Services.AddSunatScraping(builder.Configuration);
 builder.Services.AddSunatExtraction(builder.Configuration);
 builder.Services.AddSunatIndex(builder.Configuration);
 builder.Services.AddSunatRetrieval(builder.Configuration);
+builder.Services.AddSunatAgent(builder.Configuration);
 
 // The console exporter prints every span (one per embedding batch during `index`): useful for `smoke`,
 // noise for long runs. Set SUNATRAG_TRACE=1 to see the spans of any command.
@@ -51,6 +52,7 @@ try
         "extract" => await ExtractCommand.RunAsync(host.Services, args[1..], cts.Token),
         "index" => await IndexCommand.RunAsync(host.Services, args[1..], cts.Token),
         "retrieve" => await RetrieveCommand.RunAsync(host.Services, args[1..], cts.Token),
+        "ask" => await AskCommand.RunAsync(host.Services, args[1..], cts.Token),
         _ => PrintUsage()
     };
 }
@@ -79,5 +81,6 @@ static int PrintUsage()
     Console.Error.WriteLine($"  {ExtractCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     Console.Error.WriteLine($"  {IndexCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     Console.Error.WriteLine($"  {RetrieveCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
+    Console.Error.WriteLine($"  {AskCommand.Usage.Replace("Uso: dotnet run --project SunatRAG.Ingestion -- ", "")}");
     return 1;
 }
