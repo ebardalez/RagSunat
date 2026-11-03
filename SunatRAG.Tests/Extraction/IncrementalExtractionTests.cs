@@ -62,6 +62,13 @@ public class IncrementalExtractionTests
         Assert.NotEqual(baseKey, ChunkingRunner.Fingerprint(doc, "r2"));
         Assert.NotEqual(baseKey, ChunkingRunner.Fingerprint(doc with { Sha256 = "other" }, "r1"));
         Assert.NotEqual(baseKey, ChunkingRunner.Fingerprint(doc with { Norma = doc.Norma with { Sumilla = "otra sumilla" } }, "r1"));
+
+        // The classifier's verdict is part of the key: when a rule edit flips a document (same PDF, same sumilla), its key changes.
+        var asNormativa = ChunkingRunner.Fingerprint(doc, "r1", (_, _) => new CategoriaResult(Categoria.Normativa, "default"));
+        var asAdmin = ChunkingRunner.Fingerprint(doc, "r1", (_, _) => new CategoriaResult(Categoria.Administrativa, "viaje"));
+        var otherRule = ChunkingRunner.Fingerprint(doc, "r1", (_, _) => new CategoriaResult(Categoria.Administrativa, "presupuesto"));
+        Assert.NotEqual(asNormativa, asAdmin);
+        Assert.NotEqual(asAdmin, otherRule); // the rule name is stored in the report, so a rename must refresh it too
     }
 
     [Fact]

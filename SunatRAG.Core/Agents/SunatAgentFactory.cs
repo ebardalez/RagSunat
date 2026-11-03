@@ -10,10 +10,14 @@ using SunatRAG.Core.Retrieval;
 namespace SunatRAG.Core.Agents;
 
 /// <summary>Everything that belongs to ONE conversation: the agent, its citation numbering and the disposable providers.</summary>
-public sealed class SunatAgentBundle(AIAgent agent, CitationRegistry citations, IReadOnlyList<IDisposable> disposables) : IDisposable
+public sealed class SunatAgentBundle(
+    AIAgent agent, CitationRegistry citations, string instructions, IReadOnlyList<IDisposable> disposables) : IDisposable
 {
     public AIAgent Agent { get; } = agent;
     public CitationRegistry Citations { get; } = citations;
+
+    /// <summary>The system prompt this agent runs with; the output guard compares answers against it.</summary>
+    public string Instructions { get; } = instructions;
 
     public void Dispose()
     {
@@ -73,7 +77,8 @@ public sealed class SunatAgentFactory(
         {
             // load_skill / read_skill_resource REQUIRE human approval by default (AgentSkillsProviderOptions.Disable*Approval = false):
             // the run would stop with an approval request the UI never answers. These two tools only read files we ship, so approval is
-            // disabled. We do NOT pass a script runner: skills here have no scripts, and run_skill_script is never exposed.
+            // disabled. We do NOT pass a script runner: skills here have no scripts. The provider still advertises run_skill_script, so
+            // ToolHidingChatClient (below) strips it before the model ever sees it.
             var skills = new AgentSkillsProvider(
                 skillsPath, null, null,
                 new AgentSkillsProviderOptions { DisableLoadSkillApproval = true, DisableReadSkillResourceApproval = true },
@@ -84,19 +89,25 @@ public sealed class SunatAgentFactory(
 
         if (o.CompactHistory)
         {
-            // Input budget = context window - output budget. Defaults: evict old tool results past 50 % of it, drop old turns past 80 %.
+            // Input budget = context window - output budget. The thresholds are DERIVED (CompactionThresholds): the framework defaults
+            // (0.5 / 0.8) are fractions of ITS token estimate of the message list, which differs from the real prompt; see that class.
             // Compaction applies to what is sent to the model; the session transcript itself is not rewritten.
             var contextLength = aiOptions.Value.Ollama.ContextLength;
+            var thresholds = CompactionThresholds.Derive(o, retrievalOptions.Value, contextLength);
 #pragma warning disable MAAI001 // Compaction is flagged experimental in Agent Framework 1.27: re-check the API on upgrade.
             providers.Add(new CompactionProvider(
-                new ContextWindowCompactionStrategy(contextLength, retrievalOptions.Value.ReservedAnswerTokens), null, loggers));
+                new ContextWindowCompactionStrategy(
+                    contextLength, retrievalOptions.Value.ReservedAnswerTokens, thresholds.EvictAt, thresholds.TruncateAt), null, loggers));
 #pragma warning restore MAAI001
         }
 
         chatOptions.Instructions = SunatInstructions.Build(o.Retrieval, skillsPath is not null);
 
+        // Outermost middleware: the model is never offered run_skill_script (no scripts, no runner, no approval UI).
+        var model = new ToolHidingChatClient(chat, HiddenTools);
+
         var inner = new ChatClientAgent(
-            chat,
+            model,
             new ChatClientAgentOptions
             {
                 Name = "sunat-rag",
@@ -107,8 +118,11 @@ public sealed class SunatAgentFactory(
             loggers);
 
         var agent = inner.AsBuilder().UseOpenTelemetry(AiServiceCollectionExtensions.TelemetrySourceName).Build();
-        return new SunatAgentBundle(agent, registry, disposables);
+        return new SunatAgentBundle(agent, registry, chatOptions.Instructions, disposables);
     }
+
+    /// <summary>Tools the skills provider advertises that this app cannot run (see <see cref="ToolHidingChatClient"/>).</summary>
+    internal static readonly string[] HiddenTools = ["run_skill_script"];
 
     private static string? ResolveSkillsPath(AgentOptions o)
     {

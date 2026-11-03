@@ -4,6 +4,9 @@
       "Default": "Information"
     }
   },
+  "Scraping": {
+    "Contact": "CHANGE-ME (correo o URL; se añade al User-Agent para que SUNAT pueda contactarte)"
+  },
   "Ai": {
     "Provider": "Ollama",
     "Ollama": {

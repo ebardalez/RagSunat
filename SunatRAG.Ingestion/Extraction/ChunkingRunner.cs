@@ -53,12 +53,18 @@ public sealed class ChunkingRunner(DataPaths paths, ManifestStore manifestStore,
     /// <summary>Bump when the extraction/normalization/splitting code changes in a way that alters output.</summary>
     public const string RecipeVersion = "1";
 
-    /// <summary>Per-document key: PDF hash + every manifest field copied into the chunks + the run recipe.</summary>
-    public static string Fingerprint(NormaDocument doc, string runFingerprint)
+    /// <summary>
+    /// Per-document key: PDF hash + every manifest field copied into the chunks + the run recipe + the classifier's VERDICT.
+    /// The verdict is in the key so that editing a rule re-processes exactly the documents whose verdict changes (one that becomes
+    /// Administrativa must leave the index, one that stops being it must enter) without a manual <see cref="RecipeVersion"/> bump.
+    /// Without it, `extract --incremental` would reuse stale chunks after a rule change and nothing would say so.
+    /// </summary>
+    public static string Fingerprint(NormaDocument doc, string runFingerprint, Func<TipoNorma, string?, CategoriaResult>? classify = null)
     {
         var n = doc.Norma;
+        var verdict = (classify ?? CategoriaClassifier.Classify)(n.Tipo, n.Sumilla);
         var raw = string.Join('|', RecipeVersion, runFingerprint, doc.Sha256, doc.Url, n.Titulo, n.Tipo, n.Numero, n.Sumilla,
-            n.FechaPublicacion, n.FechaVigencia);
+            n.FechaPublicacion, n.FechaVigencia, verdict.Categoria, verdict.Rule);
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..16];
     }
 

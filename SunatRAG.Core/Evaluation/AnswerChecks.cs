@@ -73,7 +73,9 @@ public static partial class AnswerChecks
         @"no (lo )?(he )?encontr|no encuentro|no (hay|tengo|cuento con|dispongo de) informacion|no contiene|no figura|no aparece|" +
         @"solo puedo ayudar|no puedo (ayudar|compartir|mostrar|revelar|responder)|no esta(n)? (en|dentro de) (las normas|el indice|los fragmentos)|" +
         @"no (se )?(encuentra|encuentran) (en|dentro de) (las normas|el indice|los fragmentos)|fuera de (mi|el) (alcance|ambito)|no esta relacionad|" +
-        @"no se (menciona|mencionan|especifica|especifican|indica|indican|establece|establecen|detalla) ",
+        @"no se (menciona|mencionan|especifica|especifican|indica|indican|establece|establecen|detalla) |" +
+        // Added after `eval agent` (2026-11-03) judged "no está mencionada en los fragmentos proporcionados, por lo que no es posible determinar su contenido" as a non-refusal.
+        @"no esta(n)? mencionad[oa]s?|no es posible (determinar|encontrar|responder|confirmar)",
         RegexOptions.CultureInvariant)]
     private static partial Regex Refusal();
 }

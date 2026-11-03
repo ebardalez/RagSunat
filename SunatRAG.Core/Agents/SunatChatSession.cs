@@ -40,7 +40,12 @@ public sealed class SunatChatSession(SunatAgentFactory factory) : IDisposable
         }
 
         // Reached only when the stream completed (a cancelled run throws before this line): auditing half an answer would mislead.
-        yield return new AuditReported(AnswerAuditor.Audit(question, answer.ToString(), Citations));
+        var audit = AnswerAuditor.Audit(question, answer.ToString(), Citations, _bundle.Instructions);
+
+        // Output guard: the model reproduced its own instructions. The text already streamed to the screen, so tell the consumer to replace it.
+        if (audit.LeaksInstructions) yield return new AnswerReplaced(SunatInstructions.WithheldMessage);
+
+        yield return new AuditReported(audit);
     }
 
     private async IAsyncEnumerable<ChatEvent> StreamAsync(string question, [EnumeratorCancellation] CancellationToken ct)

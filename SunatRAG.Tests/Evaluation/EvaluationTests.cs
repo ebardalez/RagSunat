@@ -199,6 +199,9 @@ public class AnswerChecksTests
     [InlineData("No encontré ese dato en las normas indexadas.")]
     [InlineData("Eso está fuera de mi alcance.")]
     [InlineData("La tasa del IGV no se menciona explícitamente en los fragmentos proporcionados.")]
+    // Real answer to nii-otro-anio that the first version of the regex judged as "did not decline" (eval agent, 2026-11-03).
+    [InlineData("La Resolución de Superintendencia N.° 000100-2019/SUNAT no está mencionada en los fragmentos proporcionados, por lo que no es posible determinar su contenido.")]
+    [InlineData("No es posible confirmar ese dato con la información disponible.")]
     public void Out_of_scope_passes_when_the_agent_declines_without_citations(string answer) =>
         Assert.True(AnswerChecks.Evaluate(Case(GoldenKind.OutOfScope), answer, [], [], Sources, Clean).Pass);
 

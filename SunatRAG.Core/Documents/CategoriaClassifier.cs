@@ -9,7 +9,9 @@ public sealed record CategoriaResult(Categoria Categoria, string Rule);
 
 /// <summary>
 /// Rule-based filter over the sumilla. Rules were calibrated on the real 2025 corpus (401 resoluciones):
-/// ~270 of them are personnel / travel / contract / budget housekeeping.
+/// ~270 of them are personnel / travel / contract / budget housekeeping. Re-audited on 2022-2024 with
+/// `scrape --index-only` (2026-11-03): that added incorporación de mayores ingresos, contratación directa / prestación adicional,
+/// PEI horizon, Comité de Administración del Fondo, "deja sin efecto y encarga", "relación de trabajadores", niveles de autorización.
 /// Everything that is not matched is Normativa: a false "Normativa" costs a few useless chunks,
 /// a false "Administrativa" hides a real norm, so the default errs on the side of keeping.
 /// </summary>
@@ -23,18 +25,22 @@ public static class CategoriaClassifier
         // "Designa y excluye agentes de retención" is a real tax norm: the lookahead keeps it out.
         new("personal:designacion", Rx(@"^designa(n)?\b(?!\s+(y\s+excluye|agentes?|sujetos|emisores?|operadores?))")),
         new("personal:encargatura", Rx(@"^encarga(n)?\b")),
-        new("personal:deja-sin-efecto", Rx(@"^deja(n)?\s+sin\s+efecto\s+(y\s+designa|(la\s+|las\s+|el\s+|los\s+)?(designacion|designaciones|encargatura|encargaturas|encargo|encargos|encarga|autorizacion\s+de\s+viaje))")),
+        new("personal:deja-sin-efecto", Rx(@"^deja(n)?\s+sin\s+efecto\s+(y\s+(designa|encarga)|(la\s+|las\s+|el\s+|los\s+)?(designacion|designaciones|encargatura|encargaturas|encargo|encargos|encarga|autorizacion\s+de\s+viaje))")),
         new("personal:conclusion-renuncia", Rx(@"^(da(n)?\s+por\s+(concluid|terminad)|(se\s+)?acepta(n)?\s+(la\s+)?renuncia)")),
         new("viaje", Rx(@"^(autoriza(n)?\s+(el\s+|la\s+)?(viaje|comision\s+de\s+servicios|participacion)|viaje\s+de\s+servidores)")),
         new("contratacion", Rx(@"^(aprueba(n)?\s+(la\s+)?modificacion|declara(n)?\s+(la\s+)?nulidad)\b.*\b(contrato|adjudicacion|concurso\s+publico|orden\s+de\s+compra)\b")),
         new("contratacion:laudo", Rx(@"\blaudo\s+arbitral\b")),
-        new("presupuesto", Rx(@"^(aprueba(n)?\s+(la\s+)?(desagregacion|reduccion\s+del\s+presupuesto)|autoriza(n)?\s+(la\s+)?transferencia\s+financiera|autoriza(n)?\s+la\s+fase\s+de\s+ejecucion)")),
+        new("contratacion:directa", Rx(@"^aprueba(n)?\s+(la\s+)?(contratacion\s+directa|prestacion\s+adicional)\b")),
+        new("presupuesto", Rx(@"^(aprueba(n)?\s+(la\s+)?(desagregacion|reduccion\s+del\s+presupuesto|incorporacion\s+de\s+mayores\s+ingresos)|aprueba(n)?\s+norma\s+que\s+establece\s+los\s+niveles\s+de\s+autorizacion|autoriza(n)?\s+(la\s+)?transferencia\s+financiera|autoriza(n)?\s+la\s+fase\s+de\s+ejecucion)")),
         new("planeamiento", Rx(@"^(aprueba(n)?|actualiza|modifica(n)?)\s+(modificar\s+)?(la\s+|el\s+|las\s+|los\s+)?(modificacion\s+(del|de\s+la)\s+)?(plan\s+(operativo|estrategico|de\s+continuidad|de\s+estrategia|de\s+implementacion|anual)|presupuesto\s+(institucional|analitico)|programa\s+de\s+integridad|lista\s+priorizada\s+de\s+obras|cuadro\s+para|manual\s+de\s+organizacion)")),
         new("planeamiento:set-indicadores", Rx(@"\bset\s+de\s+indicadores\s+y\s+proyectos\b")),
+        new("planeamiento:pei", Rx(@"^aprueba(n)?\s+(la\s+)?ampliacion\s+del\s+horizonte\s+temporal\s+del\s+plan\s+estrategico")),
         // Lookahead: "Conforma Comité Revisor a que se refiere el artículo 62-C del Código Tributario" is tax content.
         new("organizacion:comision-equipo", Rx(@"^(?!.*\bcodigo\s+tributario\b)(conforma(n)?|crea(n)?|constituye(n)?)\s+(la\s+|el\s+)?(comision|equipo|grupo\s+de\s+trabajo|comite)")),
-        new("organizacion:comite-conformacion", Rx(@"^(actualiza\s+la\s+conformacion|modifica\s+(la\s+)?constitucion)\s+del\s+comite")),
-        new("tesoreria:servidores-autorizados", Rx(@"^modifica(n)?\s+la\s+relacion\s+de\s+servidores"))
+        // The lookahead keeps "Modifican la conformación del Comité Revisor a que se refiere el artículo 62-C del Código Tributario" (tax content) out.
+        new("organizacion:comite-conformacion", Rx(@"^(actualiza\s+la\s+conformacion|modifica(n)?\s+(la\s+)?(constitucion|conformacion)|deja(n)?\s+sin\s+efecto\s+la\s+conformacion|formaliza(n)?\s+(la\s+)?constitucion)\s+del\s+comite\b(?!\s+revisor)")),
+        new("organizacion:fondo-asistencia", Rx(@"\bcomite\s+de\s+administracion\s+del\s+fondo\s+de\s+(asistencia|empleados)\b")),
+        new("tesoreria:servidores-autorizados", Rx(@"^modifica(n)?\s+la\s+relacion\s+de\s+(servidores|trabajadores)"))
     ];
 
     public static CategoriaResult Classify(TipoNorma tipo, string? sumilla)

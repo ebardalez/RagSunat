@@ -38,6 +38,16 @@ public sealed class OllamaHealthCheck(IHttpClientFactory httpFactory, IOptions<A
                     $"Ollama reachable, but missing models: {string.Join(", ", missing)}. " +
                     $"Run: {string.Join("; ", missing.Select(m => $"ollama pull {m}"))}");
         }
+        // The CALLER asked to stop (app shutdown, request aborted): that is not an unhealthy Ollama, so do not report it as one.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        // Our own 10 s ping budget expired (a cancellation the caller did not ask for): the host is not answering.
+        catch (OperationCanceledException ex)
+        {
+            return HealthCheckResult.Unhealthy($"Ollama at {o.Endpoint} did not answer within 10 s.", ex);
+        }
         catch (Exception ex)
         {
             return HealthCheckResult.Unhealthy($"Cannot reach Ollama at {o.Endpoint}.", ex);

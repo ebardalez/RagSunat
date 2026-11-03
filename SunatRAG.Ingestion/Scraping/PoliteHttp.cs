@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -68,6 +69,19 @@ public sealed class PoliteHttpHandler(RequestThrottle throttle, RobotsPolicy rob
 }
 
 /// <summary>
+/// What the server told us about a representation last time (ETag / Last-Modified). Sending them back makes the GET "conditional":
+/// if nothing changed the server answers 304 with no body, which costs one throttled request instead of a download and, more
+/// importantly, tells us WITHOUT guessing that the cached copy is still the current one.
+/// </summary>
+public sealed record CacheValidators(string? ETag, DateTimeOffset? LastModified)
+{
+    public bool IsEmpty => ETag is null && LastModified is null;
+}
+
+/// <summary>Body is null when the server answered 304 Not Modified (use the cached copy).</summary>
+public sealed record ConditionalText(string? Body, CacheValidators Validators);
+
+/// <summary>
 /// GET with a Polly v8 resilience pipeline: retry (exponential + jitter) on transient failures,
 /// per-attempt timeout. Sits OUTSIDE <see cref="PoliteHttpHandler"/>, so every retry attempt is throttled again.
 /// </summary>
@@ -109,11 +123,23 @@ public sealed class SunatHttpClient
             .Build();
     }
 
-    /// <summary>GET, returning as soon as headers arrive. The caller owns (and must dispose) the response.</summary>
-    public async Task<HttpResponseMessage> GetAsync(Uri url, CancellationToken ct) =>
+    /// <summary>
+    /// GET, returning as soon as headers arrive. The caller owns (and must dispose) the response.
+    /// With <paramref name="validators"/> the request is conditional: a 304 response is a normal outcome the caller must handle.
+    /// </summary>
+    public async Task<HttpResponseMessage> GetAsync(Uri url, CancellationToken ct, CacheValidators? validators = null) =>
         await _pipeline.ExecuteAsync(
-            async token => await _http.SendAsync(
-                new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead, token),
+            async token =>
+            {
+                // A fresh request per attempt: an HttpRequestMessage cannot be sent twice, and Polly may retry.
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                // RFC 9110: If-None-Match wins over If-Modified-Since, so send the weaker validator only when there is no ETag.
+                if (validators?.ETag is { } etag && EntityTagHeaderValue.TryParse(etag, out var parsed))
+                    request.Headers.IfNoneMatch.Add(parsed);
+                else if (validators?.LastModified is { } modified)
+                    request.Headers.IfModifiedSince = modified;
+                return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            },
             ct);
 
     public async Task<string> GetStringAsync(Uri url, CancellationToken ct)
@@ -123,5 +149,20 @@ public sealed class SunatHttpClient
         // SUNAT sends "Content-Type: text/html" with no charset; the pages are UTF-8. Decode explicitly.
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
         return Utf8.GetString(bytes);
+    }
+
+    /// <summary>Like <see cref="GetStringAsync"/> but conditional: <see cref="ConditionalText.Body"/> is null on 304.</summary>
+    public async Task<ConditionalText> GetStringIfChangedAsync(Uri url, CacheValidators? validators, CancellationToken ct)
+    {
+        using var response = await GetAsync(url, ct, validators is { IsEmpty: false } ? validators : null);
+
+        if (response.StatusCode == HttpStatusCode.NotModified)
+            return validators is null
+                ? throw new HttpRequestException($"{url} respondió 304 sin que enviáramos validadores.")
+                : new ConditionalText(null, validators);
+
+        response.EnsureSuccessStatusCode();
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return new ConditionalText(Utf8.GetString(bytes), new CacheValidators(response.Headers.ETag?.Tag, response.Content.Headers.LastModified));
     }
 }

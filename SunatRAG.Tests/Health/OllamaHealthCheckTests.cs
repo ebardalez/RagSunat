@@ -21,6 +21,7 @@ public class OllamaHealthCheckTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested(); // like a real transport: a cancelled caller aborts the request
             Calls++;
             LastRequest = request;
             return Task.FromResult(respond(request));
@@ -143,6 +144,30 @@ public class OllamaHealthCheckTests
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
         Assert.IsType<HttpRequestException>(result.Exception);
         Assert.Contains(Endpoint, result.Description);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_is_propagated_not_reported_as_unhealthy()
+    {
+        var (check, _, _) = Create(_ => Tags("qwen3:8b", "bge-m3"));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // The host is shutting down or the request was aborted: that says nothing about Ollama, so the check must not answer "Unhealthy".
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => check.CheckHealthAsync(new HealthCheckContext(), cts.Token));
+    }
+
+    [Fact]
+    public async Task Own_timeout_is_reported_as_unhealthy_with_a_clear_message()
+    {
+        // A cancellation the CALLER did not ask for = the 10 s ping budget expired (simulated here by the transport).
+        var (check, _, _) = Create(_ => throw new TaskCanceledException("timeout"));
+
+        var result = await Run(check);
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Contains("did not answer", result.Description);
     }
 
     [Fact]

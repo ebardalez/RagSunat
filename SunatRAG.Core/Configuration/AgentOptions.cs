@@ -45,6 +45,22 @@ public sealed class AgentOptions
     public bool CompactHistory { get; init; } = true;
 
     /// <summary>
+    /// Explicit override of the fraction of the input budget (context window - max output) at which old tool results are collapsed.
+    /// Leave null: <see cref="SunatRAG.Core.Agents.CompactionThresholds"/> derives it from the context budget (the framework's own default,
+    /// 0.5, never fired here: see that class for why).
+    /// </summary>
+    public double? CompactionEvictAt { get; init; }
+
+    /// <summary>Explicit override for dropping the oldest turns. Null = derived.</summary>
+    public double? CompactionTruncateAt { get; init; }
+
+    /// <summary>
+    /// The compaction framework counts tokens as UTF-8 bytes / 4 unless given a tokenizer. MEASURED against Ollama (qwen3:8b, 25 chunks of the
+    /// real corpus, 2026-11-03): estimator / real tokens = 0.89 for Spanish legal text. Used to convert "real tokens" into the estimator's units.
+    /// </summary>
+    public double CompactionEstimatorRatio { get; init; } = 0.89;
+
+    /// <summary>
     /// Best cosine distance above which the tool warns the model that the match is weak. UNCALIBRATED: Phase 4 measured 0.31 for a
     /// well-phrased query and 0.43-0.44 for a colloquial one that missed. Phase 6 must pick it from the golden set.
     /// </summary>

@@ -47,6 +47,38 @@ public class CategoriaClassifierTests
         Assert.Equal(Categoria.Normativa, result.Categoria);
     }
 
+    // Found by `scrape --index-only --from 2022 --to 2024` (2026-11-03): housekeeping the 2025-only rules did not know.
+    [Theory]
+    [InlineData("Aprueba incorporación de mayores ingresos públicos en el Presupuesto Institucional del Año Fiscal 2022 de la Superintendencia Nacional de Aduanas y de Administración Tributaria", "presupuesto")]
+    [InlineData("Aprueba la Contratación Directa N° 012-2022-SUNAT/8B7200 \"Servicio de capacitación virtual: Curso Análisis de la Aplicación de los CDI (0587)\"", "contratacion:directa")]
+    [InlineData("Aprueba prestación adicional en el marco del Contrato N.° 81-2023/SUNAT - Prestación de Servicios", "contratacion:directa")]
+    [InlineData("Aprueban la ampliación del horizonte temporal del Plan Estratégico Institucional (PEI) de la SUNAT para el período 2018-2025", "planeamiento:pei")]
+    [InlineData("Formaliza constitución del Comité de Administración del Fondo de Asistencia y Estímulo de los Trabajadores de la Superintendencia", "organizacion:comite-conformacion")]
+    [InlineData("Prórroga de la vigencia del mandato del Comité de Administración del Fondo de Asistencia y Estímulo de los Trabajadores", "organizacion:fondo-asistencia")]
+    [InlineData("Deja sin efecto y encarga el ejercicio provisional de la presidencia de la junta de acreedores de los clubes de futbol profesional concursados", "personal:deja-sin-efecto")]
+    [InlineData("Modifica la relación de trabajadores autorizados a solicitar transferencia de fondos y revocatoria de la orden de pago de cheques", "tesoreria:servidores-autorizados")]
+    [InlineData("Aprueba norma que establece los niveles de autorización para realizar compromisos y conformidad previa al pago con cargo al presupuesto institucional", "presupuesto")]
+    [InlineData("Modifica la conformación del Comité de Gobierno y Transformación Digital de la Superintendencia Nacional de Aduanas y de Administración Tributaria", "organizacion:comite-conformacion")]
+    [InlineData("Deja sin efecto la conformación del Comité de Activos y Pasivos de la SUNAT", "organizacion:comite-conformacion")]
+    public void Housekeeping_found_in_other_years_is_classified_as_Administrativa(string sumilla, string expectedRule)
+    {
+        var result = CategoriaClassifier.Classify(TipoNorma.ResolucionSuperintendencia, sumilla);
+
+        Assert.Equal(Categoria.Administrativa, result.Categoria);
+        Assert.Equal(expectedRule, result.Rule);
+    }
+
+    [Theory]
+    [InlineData("Modifican la conformación del Comité Revisor a que se refiere el artículo 62-C del Código Tributario")]
+    [InlineData("Ratifica a los miembros del Comité Revisor a que se refiere el artículo 62-C del Código Tributario")]
+    [InlineData("Modifica la normativa sobre guías de remisión y designa emisores electrónicos")]
+    [InlineData("Aprueba el formulario virtual para declarar el Impuesto General a las Ventas")]
+    [InlineData("Aprueba disposiciones sobre la contratación electrónica de servicios de comprobantes de pago")]
+    public void The_new_rules_do_not_hide_real_tax_norms(string sumilla)
+    {
+        Assert.Equal(Categoria.Normativa, CategoriaClassifier.Classify(TipoNorma.ResolucionSuperintendencia, sumilla).Categoria);
+    }
+
     [Fact]
     public void Informes_are_always_Normativa_even_if_the_text_looks_administrative()
     {

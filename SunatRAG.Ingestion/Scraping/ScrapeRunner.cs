@@ -4,7 +4,16 @@ using SunatRAG.Core.Documents;
 
 namespace SunatRAG.Ingestion.Scraping;
 
-public sealed record ScrapeRequest(int FromYear, int ToYear, int? Limit, bool IncludeAnexos, bool RefreshIndex);
+/// <param name="Revalidate">
+/// For PDFs already on disk, ask the site (conditional GET with the manifest's ETag / Last-Modified) whether they changed.
+/// Costs one throttled request per PDF, so it is opt-in. A changed PDF gets a new manifest line, which `extract --incremental` notices.
+/// </param>
+/// <param name="IndexOnly">
+/// Read and parse the index pages (cached, polite) but download NO PDFs; the listings are returned in <see cref="ScrapeSummary.Listings"/>.
+/// Used to audit the sumilla rules on years that have not been scraped yet, at the cost of two or three page requests per year.
+/// </param>
+public sealed record ScrapeRequest(
+    int FromYear, int ToYear, int? Limit, bool IncludeAnexos, bool RefreshIndex, bool Revalidate = false, bool IndexOnly = false);
 
 public sealed class ScrapeSummary
 {
@@ -14,6 +23,16 @@ public sealed class ScrapeSummary
     public int AlreadyDownloaded { get; set; }
     public int DuplicateContent { get; set; }
     public int SkippedNonPdf { get; set; }
+
+    /// <summary>--revalidate: PDFs checked against the site / still current / replaced by a new version / not checkable (no validators saved).</summary>
+    public int Revalidated { get; set; }
+    public int Unchanged { get; set; }
+    public int Updated { get; set; }
+    public int NotRevalidable { get; set; }
+
+    /// <summary>Filled only by --index-only: every norma parsed from the index pages.</summary>
+    public List<NormaListing> Listings { get; } = [];
+
     public bool LimitReached { get; set; }
     public RateLimitedException? RateLimit { get; set; }
     public List<(Uri Url, string Error)> Failures { get; } = [];
@@ -78,9 +97,17 @@ public sealed class ScrapeRunner(
                 foreach (var norma in parsed.Normas)
                 {
                     summary.Listed++;
+                    if (request.IndexOnly) { summary.Listings.Add(norma); continue; }
+
                     foreach (var target in TargetsFor(norma, request.IncludeAnexos))
                     {
-                        if (onDisk.Contains(target.Id)) { summary.AlreadyDownloaded++; continue; }
+                        if (onDisk.Contains(target.Id))
+                        {
+                            summary.AlreadyDownloaded++;
+                            if (request.Revalidate && existing.TryGetValue(target.Id, out var current))
+                                await TryRevalidateAsync(target, current, summary, ct);
+                            continue;
+                        }
 
                         if (request.Limit is { } limit && summary.Downloaded >= limit)
                         {
@@ -126,6 +153,35 @@ public sealed class ScrapeRunner(
 
         foreach (var anexo in norma.Anexos)
             yield return new Target(NormaIds.FromUrl(anexo.Url), anexo.Url, DocumentRole.Anexo, norma.Id, anexo.Label, norma);
+    }
+
+    private async Task TryRevalidateAsync(Target target, NormaDocument current, ScrapeSummary summary, CancellationToken ct)
+    {
+        // Without saved validators the server cannot answer 304, and downloading everything just to compare hashes is not revalidation.
+        var validators = new CacheValidators(current.ETag, current.LastModified);
+        if (validators.IsEmpty) { summary.NotRevalidable++; return; }
+
+        try
+        {
+            var result = await downloader.RevalidateAsync(target.Url, validators, ct);
+            summary.Revalidated++;
+
+            // 304, or a 200 with the same bytes (a server that ignores validators): the PDF we have is current.
+            if (result is null || result.Stored.Sha256 == current.Sha256) { summary.Unchanged++; return; }
+
+            var stored = result.Stored;
+            // Same Id, new hash: the last manifest line wins, and the per-document fingerprint of `extract --incremental` includes the hash.
+            await manifest.AppendAsync(new NormaDocument(
+                target.Id, target.Role, target.ParentId, target.AnexoLabel, target.Norma, target.Url,
+                stored.Sha256, stored.RelativePath, stored.SizeBytes, time.GetUtcNow(), result.ETag, result.LastModified), ct);
+            summary.Updated++;
+            logger.LogWarning("{Id}: el PDF cambió en el sitio ({OldHash} -> {NewHash}).", target.Id, current.Sha256[..8], stored.Sha256[..8]);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or RobotsDisallowedException)
+        {
+            summary.Failures.Add((target.Url, ex.Message));
+            logger.LogWarning("No se pudo revalidar {Url}: {Error}", target.Url, ex.Message);
+        }
     }
 
     private async Task TryDownloadAsync(

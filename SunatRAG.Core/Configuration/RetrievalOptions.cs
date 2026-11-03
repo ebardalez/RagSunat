@@ -51,10 +51,12 @@ public sealed class RetrievalOptions
     public int ReservedAnswerTokens { get; init; } = 4096;
 
     /// <summary>
-    /// Our chunk token counts come from the bge-m3 tokenizer; the chat model (qwen3) tokenizes Spanish differently, usually into
-    /// more tokens. Multiply before budgeting. Calibrate against Ollama's prompt_eval_count (see the handoff).
+    /// Our chunk token counts come from the bge-m3 tokenizer (verified exact: Ollama's embed prompt_eval_count = ours + 2 for BOS/EOS);
+    /// the chat model (qwen3) tokenizes Spanish into more tokens. MEASURED 2026-11-03 against qwen3:8b on 25 real chunks:
+    /// qwen3 / bge-m3 = 1.21 on average, p90 1.315, max 1.33 (informes with tables and figures sit at the top). Overflowing the window is
+    /// silent (Ollama truncates the prompt), so this is the p90, rounded, not the mean. The earlier 1.25 under-covered 1 chunk in 10.
     /// </summary>
-    public double ChatTokenSafetyFactor { get; init; } = 1.25;
+    public double ChatTokenSafetyFactor { get; init; } = 1.30;
 
     /// <summary>"[3] Resolución ... pág. 2 (Artículo 4)" header + separators around each chunk.</summary>
     public int PerChunkOverheadTokens { get; init; } = 40;

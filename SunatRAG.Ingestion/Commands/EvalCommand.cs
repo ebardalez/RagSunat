@@ -223,6 +223,8 @@ public static class EvalCommand
                     {
                         case TextDelta d: answer.Append(d.Text); break;
                         case ToolCalled t: tools.Add(t.Name); break;
+                        // Judge what the user is finally shown: if the output guard replaced the text, the replacement is the answer.
+                        case AnswerReplaced r: answer.Clear().Append(r.Text); break;
                         case AuditReported a: audit = a.Audit; break;
                     }
                 }

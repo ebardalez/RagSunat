@@ -86,8 +86,8 @@ public class ContextBudgetTests
     [Fact]
     public void Chunk_cost_applies_the_safety_factor_and_the_header_overhead()
     {
-        // ceil(400 * 1.25) + 40
-        Assert.Equal(540, ContextBudget.ChunkCost(400, new RetrievalOptions()));
+        // ceil(400 * 1.30) + 40 (1.30 = measured p90 of qwen3 / bge-m3 tokens)
+        Assert.Equal(560, ContextBudget.ChunkCost(400, new RetrievalOptions()));
     }
 
     [Fact]
@@ -422,7 +422,7 @@ public sealed class HybridRetrieverTests : IDisposable
     public async Task The_token_budget_limits_the_context()
     {
         await IndexAsync();
-        // window 8000 - 1500 - 2000 - 4096 - question(30 chars = 10 tokens) = 394; each chunk costs ceil(50*1.25)+40 = 103 -> 3 fit
+        // window 8000 - 1500 - 2000 - 4096 - question(30 chars = 10 tokens) = 394; each chunk costs ceil(50*1.30)+40 = 105 -> 3 fit
         var tight = new HybridRetriever(
             _sp.GetRequiredService<VectorStoreCollection<string, ChunkRecord>>(), _sp.GetRequiredService<Fts5KeywordIndex>(), _embedder,
             Options.Create(new RetrievalOptions()),
@@ -433,7 +433,7 @@ public sealed class HybridRetrieverTests : IDisposable
 
         Assert.Equal(394, result.Diagnostics.BudgetTokens);
         Assert.Equal(3, result.Chunks.Count);
-        Assert.Equal(309, result.Diagnostics.UsedTokens);
+        Assert.Equal(315, result.Diagnostics.UsedTokens);
         Assert.Equal(1, result.Diagnostics.SkippedForBudget);
     }
 

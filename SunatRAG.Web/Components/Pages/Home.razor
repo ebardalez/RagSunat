@@ -53,7 +53,7 @@
                     La respuesta cita fuentes que no existen: @string.Join(", ", sources.Invalid.Select(n => $"[{n}]")). No la tomes como fundamentada.
                 </div>
             }
-            @if (sources.Valid.Count == 0 && sources.Invalid.Count == 0 && turn.Answer.Length > 0 && turn.Error is null)
+            @if (sources.Valid.Count == 0 && sources.Invalid.Count == 0 && turn.Answer.Length > 0 && turn.Error is null && !turn.Replaced)
             {
                 <div class="small text-warning mt-1">Esta respuesta no cita ninguna fuente.</div>
             }
@@ -101,6 +101,7 @@
         public CitationResolution? Sources { get; set; }
         public AnswerAudit? Audit { get; set; }
         public bool Stopped { get; set; }
+        public bool Replaced { get; set; }
         public string? Error { get; set; }
     }
 
@@ -132,6 +133,11 @@
                         break;
                     case ToolCalled t:
                         turn.Tools.Add(t.Arguments is null ? t.Name : $"{t.Name} {t.Arguments}");
+                        break;
+                    case AnswerReplaced r:
+                        // Output guard: what already streamed reproduced the internal instructions; show the safe text instead.
+                        turn.Answer.Clear().Append(r.Text);
+                        turn.Replaced = true;
                         break;
                     case AuditReported a:
                         turn.Audit = a.Audit;

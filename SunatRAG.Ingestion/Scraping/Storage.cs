@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -70,6 +71,21 @@ public sealed class PdfDownloader(SunatHttpClient http, PdfStore store)
         var stored = await store.SaveAsync(stream, ct);
         return new DownloadResult(stored, response.Headers.ETag?.Tag, response.Content.Headers.LastModified);
     }
+
+    /// <summary>
+    /// Conditional GET with the validators saved in the manifest. Returns null when the server says 304 (the PDF we have is current).
+    /// A 200 returns the (possibly identical) bytes: servers that ignore validators always answer 200, so the CALLER compares hashes.
+    /// </summary>
+    public async Task<DownloadResult?> RevalidateAsync(Uri url, CacheValidators validators, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(url, ct, validators);
+        if (response.StatusCode == HttpStatusCode.NotModified) return null;
+
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        var stored = await store.SaveAsync(stream, ct);
+        return new DownloadResult(stored, response.Headers.ETag?.Tag, response.Content.Headers.LastModified);
+    }
 }
 
 /// <summary>
@@ -130,7 +146,13 @@ public sealed class ManifestStore(DataPaths paths, ILogger<ManifestStore> logger
     }
 }
 
-/// <summary>Caches index HTML on disk (TTL) so re-runs, and parser debugging, do not hit the site again.</summary>
+/// <summary>
+/// Caches index HTML on disk so re-runs, and parser debugging, do not hit the site again. Two layers:
+///   1. TTL: inside <see cref="ScrapingOptions.IndexCacheTtl"/> the file is used with NO request at all.
+///   2. Revalidation: past the TTL (or with refresh) we send a conditional GET with the ETag / Last-Modified saved next to the file
+///      (<c>{id}.html.meta.json</c>). A 304 means "unchanged": the file's timestamp is renewed and nothing is downloaded or rewritten.
+///      Servers that send no validators simply get a normal GET, so this never makes things worse.
+/// </summary>
 public sealed class IndexPageCache(
     DataPaths paths,
     SunatHttpClient http,
@@ -138,20 +160,47 @@ public sealed class IndexPageCache(
     TimeProvider time,
     ILogger<IndexPageCache> logger)
 {
+    private static readonly JsonSerializerOptions MetaJson = new(JsonSerializerDefaults.Web);
+
     public async Task<string> GetAsync(Uri url, bool refresh, CancellationToken ct)
     {
         var file = Path.Combine(paths.IndexCache, NormaIds.FromUrl(url) + ".html");
+        var cached = File.Exists(file);
 
-        if (!refresh && File.Exists(file)
-            && time.GetUtcNow() - File.GetLastWriteTimeUtc(file) < options.Value.IndexCacheTtl)
+        if (!refresh && cached && time.GetUtcNow() - File.GetLastWriteTimeUtc(file) < options.Value.IndexCacheTtl)
         {
             logger.LogDebug("Índice en caché: {Url}", url);
             return await File.ReadAllTextAsync(file, Encoding.UTF8, ct);
         }
 
-        var html = await http.GetStringAsync(url, ct);
+        // Validators are only meaningful together with the file they describe.
+        var validators = cached ? await ReadValidatorsAsync(file + ".meta.json", ct) : null;
+        var result = await http.GetStringIfChangedAsync(url, validators, ct);
+
+        if (result.Body is null)
+        {
+            // 304: same bytes. Renew the timestamp so the TTL window restarts without rewriting the file.
+            File.SetLastWriteTimeUtc(file, time.GetUtcNow().UtcDateTime);
+            logger.LogInformation("Índice sin cambios (304): {Url}", url);
+            return await File.ReadAllTextAsync(file, Encoding.UTF8, ct);
+        }
+
         Directory.CreateDirectory(paths.IndexCache);
-        await File.WriteAllTextAsync(file, html, new UTF8Encoding(false), ct);
-        return html;
+        await File.WriteAllTextAsync(file, result.Body, new UTF8Encoding(false), ct);
+        await File.WriteAllTextAsync(file + ".meta.json", JsonSerializer.Serialize(result.Validators, MetaJson), new UTF8Encoding(false), ct);
+        return result.Body;
+    }
+
+    private static async Task<CacheValidators?> ReadValidatorsAsync(string metaFile, CancellationToken ct)
+    {
+        if (!File.Exists(metaFile)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<CacheValidators>(await File.ReadAllTextAsync(metaFile, ct), MetaJson);
+        }
+        catch (JsonException)
+        {
+            return null; // unreadable sidecar: fall back to an unconditional GET
+        }
     }
 }
